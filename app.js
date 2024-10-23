@@ -36,8 +36,23 @@ const isValidDate = (date) => {
   return dayjs(date, "YYYY-MM-DD", true).isValid(); // Strict parsing
 };
 
+// Get summary of transactions
+app.get("/transactions/summary", async (req, res) => {
+  const getSummaryQuery = `SELECT type, SUM(amount) AS total FROM transactions GROUP BY type;`;
+
+  try {
+    const dbResponse = await db.all(getSummaryQuery);
+
+    return res.status(200).json(dbResponse);
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error fetching summary", error: err.message });
+  }
+});
+
 // Create a new transaction
-app.post("/transactions", (req, res) => {
+app.post("/transactions", async (req, res) => {
   const { type, category_id, amount, date, description } = req.body;
 
   // Validate date format
@@ -49,63 +64,63 @@ app.post("/transactions", (req, res) => {
 
   const insertTransactionQuery = `INSERT INTO transactions (type, category_id, amount, date, description) VALUES (?, ?, ?, ?, ?)`;
 
-  db.run(
-    insertTransactionQuery,
-    [type, category_id, amount, date, description],
-    function (err) {
-      if (err) {
-        return res
-          .status(500)
-          .json({ message: "Error adding transaction", error: err.message });
-      }
-      res
-        .status(201)
-        .json({
-          id: this.lastID,
-          type,
-          category_id,
-          amount,
-          date,
-          description,
-        });
-    }
-  );
+  try {
+    const dbResponse = await db.run(insertTransactionQuery, [
+      type,
+      category_id,
+      amount,
+      date,
+      description,
+    ]);
+    res.status(201).json({
+      id: dbResponse.lastID,
+      type,
+      category_id,
+      amount,
+      date,
+      description,
+    });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error adding transaction", error: err.message });
+  }
 });
 
 // Get all transactions
-app.get("/transactions", (req, res) => {
+app.get("/transactions", async (req, res) => {
   const getAllTransactionsQuery = `SELECT id, type, category_id, amount, date, description FROM transactions`;
 
-  db.all(getAllTransactionsQuery, [], (err, rows) => {
-    if (err) {
-      return res
-        .status(500)
-        .json({ message: "Error fetching transactions", error: err.message });
-    }
-    res.status(200).json(rows);
-  });
+  try {
+    const dbResponse = await db.all(getAllTransactionsQuery);
+    return res.status(200).json(dbResponse);
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error fetching transactions", error: err.message });
+  }
 });
 
 // Get a transaction by ID
-app.get("/transactions/:id", (req, res) => {
+app.get("/transactions/:id", async (req, res) => {
   const id = req.params.id;
   const getTransactionByIdQuery = `SELECT id, type, category_id, amount, date, description FROM transactions WHERE id = ?`;
 
-  db.get(getTransactionByIdQuery, [id], (err, row) => {
-    if (err) {
-      return res
-        .status(500)
-        .json({ message: "Error fetching transaction", error: err.message });
-    }
-    if (!row) {
+  try {
+    const dbResponse = await db.get(getTransactionByIdQuery, [id]);
+    if (!dbResponse) {
       return res.status(404).json({ message: "Transaction not found" });
     }
-    res.status(200).json(row);
-  });
+    res.status(200).json(dbResponse);
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error fetching transaction", error: err.message });
+  }
 });
 
 // Update a transaction by ID
-app.put("/transactions/:id", (req, res) => {
+app.put("/transactions/:id", async (req, res) => {
   const id = req.params.id;
   const { type, category_id, amount, date, description } = req.body;
 
@@ -118,53 +133,42 @@ app.put("/transactions/:id", (req, res) => {
 
   const updateTransactionQuery = `UPDATE transactions SET type = ?, category_id = ?, amount = ?, date = ?, description = ? WHERE id = ?`;
 
-  db.run(
-    updateTransactionQuery,
-    [type, category_id, amount, date, description, id],
-    function (err) {
-      if (err) {
-        return res
-          .status(500)
-          .json({ message: "Error updating transaction", error: err.message });
-      }
-      if (this.changes === 0) {
-        return res.status(404).json({ message: "Transaction not found" });
-      }
-      res
-        .status(200)
-        .json({ id, type, category_id, amount, date, description });
-    }
-  );
-});
-
-// Delete a transaction by ID
-app.delete("/transactions/:id", (req, res) => {
-  const id = req.params.id;
-  const deleteTransactionQuery = `DELETE FROM transactions WHERE id = ?`;
-
-  db.run(deleteTransactionQuery, [id], function (err) {
-    if (err) {
-      return res
-        .status(500)
-        .json({ message: "Error deleting transaction", error: err.message });
-    }
+  try {
+    await db.run(updateTransactionQuery, [
+      type,
+      category_id,
+      amount,
+      date,
+      description,
+      id,
+    ]);
     if (this.changes === 0) {
       return res.status(404).json({ message: "Transaction not found" });
     }
-    res.status(204).send(); // No content response
-  });
+    return res
+      .status(200)
+      .json({ id, type, category_id, amount, date, description });
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error updating transaction", error: err.message });
+  }
 });
 
-// Get summary of transactions
-app.get("/transactions/summary", (req, res) => {
-  const getSummaryQuery = `SELECT type, SUM(amount) AS total FROM transactions GROUP BY type`;
+// Delete a transaction by ID
+app.delete("/transactions/:id", async (req, res) => {
+  const id = req.params.id;
+  const deleteTransactionQuery = `DELETE FROM transactions WHERE id = ?`;
 
-  db.all(getSummaryQuery, [], (err, summary) => {
-    if (err) {
-      return res
-        .status(500)
-        .json({ message: "Error fetching summary", error: err.message });
+  try {
+    const dbResponse = await db.run(deleteTransactionQuery, [id]);
+    if (dbResponse.changes === 0) {
+      return res.status(404).json({ message: "Transaction not found" });
     }
-    res.status(200).json(summary);
-  });
+    return res.status(204);
+  } catch (err) {
+    return res
+      .status(500)
+      .json({ message: "Error deleting transaction", error: err.message });
+  }
 });
